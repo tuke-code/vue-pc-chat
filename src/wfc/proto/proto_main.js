@@ -6,6 +6,17 @@ const ASYNC_CALLBACK = 'protoAsyncCallback';
 let lastActiveTime = 0; // 单位是秒
 let connectionStatusEventListener;
 let _friendIds = [];
+let _preloadingDefaultData = false;
+// 连接状态事件的单调序号，用于丢弃被更新事件超越的延迟转发
+let _connectionStatusSeq = 0;
+// 群成员预热串行队列：保证同一时间只有一个群在预热
+let _groupMemberPreloadQueue = Promise.resolve();
+
+// 让出主进程事件循环。预加载需要连续进行大量同步原生调用，如果不让出事件循环，
+// 渲染进程所有 sendSync IPC（invokeProtoMethod 等）都会被连带阻塞，表现为页面卡死
+function _yieldMainEventLoop() {
+    return new Promise(resolve => setImmediate(resolve));
+}
 
 const asyncProtoMethods = {
     getUserInfoEx: _asyncCall2('getUserInfoEx'),
@@ -363,19 +374,41 @@ function setupProtoListener() {
 
     proto.setConnectionStatusListener((status) => {
         connectionStatusEventListener = _genProtoEventListener("connectionStatus");
-        if (lastActiveTime === 0 && status === 1) {
-            let delayTime = 0;
-            try {
-                delayTime = _preloadDefaultData();
-                lastActiveTime = Math.ceil(new Date().getTime() / 1000);
-                console.log("wait preloadDefaultData", delayTime);
-            } catch (e) {
-                console.error("preloadDefaultData exception ", e, e.message);
-            }
-            setTimeout(() => {
-                console.log("connectionStatus ", status);
-                connectionStatusEventListener(status);
-            }, delayTime)
+        // 单调序号：延迟/异步的状态转发只在没有更新的状态事件到来时才执行，避免把过期的
+        // Connected 转发给渲染进程（例如延迟等待期间连接已断开）。
+        // 注意不能按具体状态值判断（比较 currentStatus === 1 之类）：Receiveing 等中间态是
+        // 健康的连接流转，把它当断开会吞掉 Connected 通知；被更新事件超越时直接丢弃即可，
+        // 同步完成后 SDK 会自行再次回调 Connected，走下面的 else 分支立即转发
+        _connectionStatusSeq++;
+        const statusSeq = _connectionStatusSeq;
+        if (lastActiveTime === 0 && status === 1 && !_preloadingDefaultData) {
+            // 预加载是异步分批进行的（会让出事件循环），期间可能再次收到连接状态回调，
+            // 用 _preloadingDefaultData 防止重复触发预加载
+            _preloadingDefaultData = true;
+            _preloadDefaultData()
+                .then(delayTime => {
+                    lastActiveTime = Math.ceil(new Date().getTime() / 1000);
+                    console.log("wait preloadDefaultData", delayTime);
+                    setTimeout(() => {
+                        if (statusSeq !== _connectionStatusSeq) {
+                            console.log("skip stale connectionStatus", status);
+                            return;
+                        }
+                        console.log("connectionStatus ", status);
+                        connectionStatusEventListener(status);
+                    }, delayTime)
+                })
+                .catch(e => {
+                    // 保持与原同步实现一致：异常时不更新 lastActiveTime（下次连接成功会重试预加载），并立即放行连接状态
+                    console.error("preloadDefaultData exception ", e, e.message);
+                    if (statusSeq === _connectionStatusSeq) {
+                        console.log("connectionStatus ", status);
+                        connectionStatusEventListener(status);
+                    }
+                })
+                .finally(() => {
+                    _preloadingDefaultData = false;
+                });
         } else {
             connectionStatusEventListener(status);
         }
@@ -400,7 +433,14 @@ function setupProtoListener() {
     proto.setSettingUpdateListener(_genProtoEventListener('settingUpdate'));
     proto.setChannelInfoUpdateListener(_genProtoEventListener('channelInfoUpdate'));
     proto.setGroupMemberUpdateListener((groupId, groupMembersStr) => {
-        _preloadGroupMemberUserInfos(groupId, groupMembersStr);
+        // 初次同步时群成员更新事件可能大批量突发，用串行队列排队预热：前一个群预热完成
+        // （内部分批让出事件循环）后才开始下一个，避免多个事件的首批同步查询在同一轮
+        // 事件循环里背靠背执行，阻塞渲染进程的同步 IPC。
+        // 事件转发不等预热；成员的用户信息随后会通过 userInfoUpdate 事件补齐。
+        // catch 挂在每个链节上，单个群预热失败不会中断整个队列
+        _groupMemberPreloadQueue = _groupMemberPreloadQueue
+            .then(() => _preloadGroupMemberUserInfos(groupId, groupMembersStr))
+            .catch(e => console.error('preloadGroupMemberUserInfos error', e));
         _genProtoEventListener("groupMemberUpdate")(groupId, groupMembersStr);
     });
 
@@ -412,6 +452,7 @@ function setupProtoListener() {
     try {
         proto.setTrafficDataListener(_genProtoEventListener('trafficDataEvent'));
         proto.setErrorEventListener(_genProtoEventListener('errorEventCallback'));
+        proto.setJoinGroupRequestUpdateCallback(_genProtoEventListener('joinGroupRequestUpdate'));
     } catch (error) {
         //可能SDK不支持
     }
@@ -421,7 +462,7 @@ function setupProtoListener() {
 // 拉取会话相关用户、群信息
 // 自己的用户信息
 // 获取所有好友、好友请求的用户信息
-function _preloadDefaultData() {
+async function _preloadDefaultData() {
     console.log('preloadDefaultData');
     let requests = _getIncommingFriendRequest();
     let userIdSet = new Set();
@@ -432,9 +473,11 @@ function _preloadDefaultData() {
     requests.forEach((fr) => {
         userIdSet.add(fr.target);
     });
+    await _yieldMainEventLoop();
 
     let friendIds = _getMyFriendList(false);
     friendIds.forEach(uid => userIdSet.add(uid));
+    await _yieldMainEventLoop();
 
     let conversationInfoList = _getConversationList([0, 1, 3], [0, 1, 2]);
     let groupIdIds = [];
@@ -451,14 +494,22 @@ function _preloadDefaultData() {
             userIdSet.add(info.lastMessage.fromUser);
         }
     })
+    await _yieldMainEventLoop();
     let uids = Array.from(userIdSet);
     for (let i = 0; i < uids.length / 2000; i++) {
         _getUserInfos(uids.slice(2000 * i, (i + 1) * 2000), '');
+        // 每批之间让出事件循环，避免长时间独占主进程
+        await _yieldMainEventLoop();
     }
     let newUserCount = uids.length;
 
     let newGroupCount = groupIdIds.length;
-    _getGroupInfos(groupIdIds, false);
+    // 群信息同样分批获取并让出事件循环，避免一次原生调用携带全部群 id 造成长阻塞
+    const groupBatchSize = 1000;
+    for (let i = 0; i < groupIdIds.length; i += groupBatchSize) {
+        _getGroupInfos(groupIdIds.slice(i, i + groupBatchSize), false);
+        await _yieldMainEventLoop();
+    }
 
     // groupIdIds.forEach(groupId => {
     //     _getGroupMembers(groupId, false);
@@ -485,7 +536,7 @@ function _preloadDefaultData() {
 let _preloadedUserIds = new Set();
 let _preloadedGroupIds = new Set();
 
-function _preloadGroupMemberUserInfos(groupId, groupMembersStr) {
+async function _preloadGroupMemberUserInfos(groupId, groupMembersStr) {
     // console.log('preloadGroupMemberUserInfos', groupId);
     let memberIds = [];
     let arr = JSON.parse(groupMembersStr);
@@ -494,13 +545,9 @@ function _preloadGroupMemberUserInfos(groupId, groupMembersStr) {
     });
     for (let i = 0; i < memberIds.length / 2000; i++) {
         _getUserInfos(memberIds.slice(2000 * i, (i + 1) * 2000), "");
+        // 初次同步时群成员更新事件密集，分批让出事件循环，避免阻塞渲染进程的同步 IPC
+        await _yieldMainEventLoop();
     }
-    try {
-      proto.setJoinGroupRequestUpdateCallback(_genProtoEventListener('trafficDataEvent'));
-    } catch (error) {
-      //可能SDK不支持
-    }
-
 }
 
 function _genProtoEventListener(protoEventName) {
