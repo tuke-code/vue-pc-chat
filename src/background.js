@@ -1348,6 +1348,11 @@ app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
 // pls refer to: https://blog.csdn.net/youyudexiaowangzi/article/details/118676790
 // windows 7、openharmony 模拟器，如果启动黑屏，请将下面注释打开
 //app.disableHardwareAcceleration();
+if((process.platform === 'openharmony' && process.env.NODE_ENV !== 'production')
+    || (process.platform === 'win32' && os.release().startsWith('6.1'))) {
+    app.disableHardwareAcceleration();
+}
+
 app.on('open-url', (event, url) => {
     onDeepLink(url);
 })
@@ -1690,3 +1695,4 @@ ipcMain.handle('create-voip-window', async (event, windowOptions) => {
 });
 
 import './remote.js'
+import * as os from 'node:os';
