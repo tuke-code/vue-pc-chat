@@ -59,6 +59,14 @@ export default {
     methods: {
         onReceiveMessage(msg) {
             if (isElectron()) {
+                // 校验发送者是否为自己且为接收消息，避免冒用攻击
+                if (
+                    msg.from !== wfc.getUserId() ||
+                    msg.direction !== 1
+                ) {
+                    return;
+                }
+
                 // 检查是否是备份请求消息
                 if (
                     msg.content &&
