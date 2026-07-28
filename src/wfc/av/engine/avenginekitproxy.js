@@ -594,7 +594,7 @@ export class AvEngineKitProxy {
             case 'multi':
             case 'conference':
                 width = 960;
-                height = 640;
+                height = 680;
                 minWidth = 800;
                 minHeight = 480;
                 break;
