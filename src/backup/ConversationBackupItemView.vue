@@ -23,6 +23,7 @@
 <script>
 import wfc from "../wfc/client/wfc";
 import Config from "../config";
+import store from "../store";
 
 export default {
     name: "ConversationBackupItemView",
@@ -48,33 +49,37 @@ export default {
         }
     },
     computed: {
+        // target（头像/名称）在展示时才按需解析，详见 store.ensureConversationTarget
+        conversationTarget() {
+            return store.ensureConversationTarget(this.source.conversation);
+        },
         title() {
             // 参考ConversationItemView的conversationTitle实现
-            let info = this.source;
-            if (info.conversation._target) {
-                return info.conversation._target._displayName || info.conversation._target.displayName || '未知会话';
+            let target = this.conversationTarget;
+            if (target) {
+                return target._displayName || target.displayName || '未知会话';
             }
             return '';
         },
         portrait() {
             // 参考ConversationItemView的portrait实现
-            let info = this.source;
-            let conv = info.conversation;
+            let conv = this.source.conversation;
+            let target = this.conversationTarget;
 
             if (conv.type === 2) { // Group
-                if (conv._target && conv._target.portrait) {
-                    return conv._target.portrait;
+                if (target && target.portrait) {
+                    return target.portrait;
                 } else {
-                    let dp = wfc.defaultGroupPortrait(conv._target);
-                    if (conv._target) {
-                        conv._target.portrait = dp;
+                    let dp = wfc.defaultGroupPortrait(target);
+                    if (target) {
+                        target.portrait = dp;
                     }
                     return dp;
                 }
             } else {
                 // Single, Channel
-                if (conv._target) {
-                    return conv._target.portrait;
+                if (target) {
+                    return target.portrait;
                 }
             }
             return '';

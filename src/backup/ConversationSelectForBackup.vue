@@ -118,10 +118,11 @@ export default {
         },
 
         // 获取会话标题
+        // target（头像/名称）在展示时才按需解析，详见 store.ensureConversationTarget
         getConversationTitle(convInfo) {
-            let conv = convInfo.conversation;
-            if (conv._target) {
-                return conv._target._displayName || conv._target.displayName || '未知会话';
+            let target = store.ensureConversationTarget(convInfo.conversation);
+            if (target) {
+                return target._displayName || target.displayName || '未知会话';
             }
             return '';
         },
