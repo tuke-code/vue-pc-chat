@@ -85,6 +85,13 @@ export class WfcManager {
     }
 
     /**
+     * 重置clientId，调用此方法后需要重启应用才能生效。
+     */
+    resetClientId() {
+        impl.resetClientId();
+    }
+
+    /**
      * 获取协议栈版本号
      */
     getProtoRevision() {

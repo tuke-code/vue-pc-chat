@@ -291,6 +291,10 @@
                         <span class="link-separator">|</span>
                         <a href="javascript:" @click.prevent.stop="openLogDir">日志目录</a>
                     </template>
+                    <template v-if="sharedMiscState.isElectron && !sharedMiscState.isOhos">
+                        <span class="link-separator">|</span>
+                        <a href="javascript:" class="reset-client-id-link" @click.prevent.stop="resetClientId">重置设备ID</a>
+                    </template>
                 </div>
             </div>
         </div>
@@ -317,7 +321,7 @@ import { getItem, setItem } from '../../util/storageHelper';
 import ChangePasswordView from './ChangePasswordView';
 import ResetPasswordView from './ResetPasswordView';
 import BackupRestoreView from '../../../backup/BackupRestoreView.vue';
-import { shell } from '../../../platform';
+import { shell, app } from '../../../platform';
 import IpcEventType from '../../../ipcEventType';
 import avenginekit from '../../../wfc/av/internal/engine.min';
 import Config from '../../../config';
@@ -346,6 +350,55 @@ export default {
         openLogDir() {
             let appPath = wfc.getAppPath();
             shell.openPath(appPath);
+        },
+        resetClientId() {
+            const confirmed = window.confirm('警告：重置设备ID会删除本地所有内容（包括聊天记录、设置等），重置后需要重启应用。\n\n是否确认重置？');
+            if (!confirmed) {
+                return;
+            }
+            try {
+                wfc.resetClientId();
+            } catch (e) {
+                console.error('resetClientId error', e);
+                window.alert('重置设备ID失败，请重试。');
+                return;
+            }
+
+            const doRestart = () => {
+                try {
+                    // 清理登录状态，避免重启后仍保持旧会话
+                    clear();
+                    wfc.disconnect();
+                    if (isElectron()) {
+                        ipcRenderer.send(IpcEventType.LOGOUT);
+                    }
+                    if (app && app.restart) {
+                        app.restart();
+                    } else {
+                        throw new Error('restart not available');
+                    }
+                } catch (e) {
+                    console.error('restart app error', e);
+                    window.alert('自动重启失败，请关闭应用后手动启动。');
+                }
+            };
+
+            let restartTimer = setTimeout(doRestart, 2000);
+            this.$alert({
+                name: 'reset-client-id-restart-alert',
+                title: '应用即将重启',
+                content: '重置完成，应用将在 2 秒后自动重启。',
+                confirmText: '立即重启',
+                cancelText: '取消',
+                confirmButtonType: 'primary',
+                confirmCallback: () => {
+                    clearTimeout(restartTimer);
+                    doRestart();
+                },
+                cancelCallback: () => {
+                    // 不操作，自动重启计时器继续
+                }
+            });
         },
         checkForUpdates() {
             if (isElectron()) {
@@ -1075,6 +1128,14 @@ export default {
     color: var(--border-strong);
     font-size: var(--font-size-xs);
     user-select: none;
+}
+
+.about-links a.reset-client-id-link {
+    color: var(--color-error, #ff4d4f);
+}
+
+.about-links a.reset-client-id-link:hover {
+    color: var(--color-error-hover, #ff7875);
 }
 
 </style>

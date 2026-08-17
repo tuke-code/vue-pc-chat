@@ -91,6 +91,7 @@ export const app = {
     getPath: (name) => ipcRenderer.sendSync('app-get-path', name),
     getAppPath: () => AppPath,
     exit: (code) => ipcRenderer.send('app-exit', code),
+    restart: () => ipcRenderer.send('restart-app'),
     setAppUserModelId: (id) => ipcRenderer.send('app-set-user-model-id', id)
 };
 export const screen = {

@@ -1215,6 +1215,11 @@ const createMainWindow = async () => {
         session.defaultSession.clearStorageData();
     });
 
+    ipcMain.on(IPCEventType.RESTART_APP, (event, args) => {
+        app.relaunch({ args: process.argv.slice(1).concat(['--relaunch']) });
+        app.exit(0);
+    });
+
     ipcMain.on(IPCEventType.RESIZE_LOGIN_WINDOW, (event, args) => {
         mainWindowState.unmanage();
         mainWindow.resizable = isDevelopment;
