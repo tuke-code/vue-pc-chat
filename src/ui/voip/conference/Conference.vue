@@ -13,7 +13,7 @@
                                               :ohos="sharedMiscState.isOhos"
                                               :macos="!(sharedMiscState.isElectronWindowsOrLinux && sharedMiscState.isOhos)"/>
             <ScreenShareControlView v-if="session && session.screenSharing" type="conference" v-bind:style="{top: sharedMiscState.isElectron ? '30px' : '0px'}"/>
-            <h1 style="display: none">Voip-Conference 运行在新的window，和主窗口数据是隔离的！！</h1>
+            <h1 style="display: none">Voip-Conference：Electron 端运行在新的window，和主窗口数据是隔离的；浏览器端是叠加在主窗口内的 div/modal，和主窗口共享同一个 document！！</h1>
         </div>
         <div v-if="endReason !== undefined && endReason === 4" @click="rejoinConference" class="rejoin-container">
             会议断开，点击重新加入
@@ -254,7 +254,7 @@
                 </div>
                 <div class="slider-content">
                 <ConferenceManageView
-                    v-show="showConferenceManageView && activeSliderTab === 'manage'"
+                    v-if="showConferenceManageView && activeSliderTab === 'manage'"
                     v-bind:class="{ active: showConferenceManageView}"
                     :participants="participantUserInfos"
                     :session="session"
@@ -743,8 +743,8 @@ export default {
             this.hangupMenuVisible = false;
             this.session.leaveConference(true);
             this.$eventBus.$emit('conference-slider-closed');
+            conferenceManager.addHistory(conferenceManager.conferenceInfo, new Date().getTime() - conferenceManager.conferenceInfo.startTime * 1000, true)
             await conferenceApi.destroyConference(conferenceManager.conferenceInfo.conferenceId)
-            conferenceManager.addHistory(conferenceManager.conferenceInfo, new Date().getTime() - conferenceManager.conferenceInfo.startTime * 1000);
             this.$eventBus.$emit('conferenceListUpdated');
         },
 
@@ -752,7 +752,6 @@ export default {
             this.hangupMenuVisible = false;
             this.session.leaveConference(false);
             this.$eventBus.$emit('conference-slider-closed');
-            conferenceManager.addHistory(conferenceManager.conferenceInfo, new Date().getTime() - conferenceManager.conferenceInfo.startTime * 1000);
         },
 
         onInputClick(e) {
