@@ -352,7 +352,11 @@ export class WfcManager {
      * @returns {[GroupInfo]} 参考{@link GroupInfo}
      */
     getMyGroupList() {
-        return impl.getMyGroupList();
+        let groupInfos = impl.getMyGroupList();
+        groupInfos.forEach(info => {
+            info.portrait = this.redirectUrl(info.portrait);
+        });
+        return groupInfos;
     }
 
     /**
@@ -364,6 +368,8 @@ export class WfcManager {
         groupInfos.map(info => {
             if (!info.portrait) {
                 info.portrait = this.defaultGroupPortrait(info);
+            } else {
+                info.portrait = this.redirectUrl(info.portrait);
             }
             return info;
         })
@@ -429,6 +435,8 @@ export class WfcManager {
         let userInfo = impl.getUserInfo(userId, refresh, groupId);
         if (!userInfo.portrait) {
             userInfo.portrait = this.defaultUserPortrait(userInfo);
+        } else {
+            userInfo.portrait = this.redirectUrl(userInfo.portrait);
         }
         return userInfo;
     }
@@ -441,7 +449,12 @@ export class WfcManager {
      * @param {function (number)} fail 失败回调
      */
     getUserInfoEx(userId, refresh, success, fail) {
-        impl.getUserInfoEx(userId, refresh, success, fail);
+        impl.getUserInfoEx(userId, refresh, userInfo => {
+            if (userInfo) {
+                userInfo.portrait = this.redirectUrl(userInfo.portrait);
+            }
+            success && success(userInfo);
+        }, fail);
     }
 
     /**
@@ -456,6 +469,7 @@ export class WfcManager {
                 if (!u.portrait) {
                     u.portrait = this.defaultUserPortrait(u);
                 }
+                u.portrait = this.redirectUrl(u.portrait);
             });
             successCB && successCB(userInfos);
         }, err => {
@@ -475,6 +489,7 @@ export class WfcManager {
             if (!u.portrait) {
                 u.portrait = this.defaultUserPortrait(u);
             }
+            u.portrait = this.redirectUrl(u.portrait);
         });
         return userInfos;
     }
@@ -485,6 +500,7 @@ export class WfcManager {
                 if (!u.portrait) {
                     u.portrait = this.defaultUserPortrait(u);
                 }
+                u.portrait = this.redirectUrl(u.portrait);
             });
             callback(userInfos)
         });
@@ -519,6 +535,7 @@ export class WfcManager {
                 if (!u.portrait) {
                     u.portrait = this.defaultUserPortrait(u)
                 }
+                u.portrait = this.redirectUrl(u.portrait);
             });
             successCB && successCB(keyword, userInfos);
         }, failCB);
@@ -530,7 +547,11 @@ export class WfcManager {
      * @returns {[UserInfo]}
      */
     searchFriends(keyword) {
-        return impl.searchFriends(keyword);
+        let userInfos = impl.searchFriends(keyword);
+        userInfos.forEach(u => {
+            u.portrait = this.redirectUrl(u.portrait);
+        });
+        return userInfos;
     }
 
     /**
@@ -544,6 +565,8 @@ export class WfcManager {
             let info = r.groupInfo;
             if (!info.portrait) {
                 info.portrait = this.defaultGroupPortrait(info);
+            } else {
+                info.portrait = this.redirectUrl(info.portrait);
             }
         })
         return results;
@@ -759,6 +782,8 @@ export class WfcManager {
         let info = impl.getGroupInfo(groupId, refresh);
         if (!info.portrait) {
             info.portrait = this.defaultGroupPortrait(info);
+        } else {
+            info.portrait = this.redirectUrl(info.portrait);
         }
         return info;
     }
@@ -772,6 +797,9 @@ export class WfcManager {
     getGroupInfos(groupIds, refresh = false) {
         let infos = impl.getGroupInfos(groupIds, refresh);
         // 此处会批量获取，如果生成默认头像，可能会导致性能问题。留到显示时，再去生成头像
+        infos.forEach(info => {
+            info.portrait = this.redirectUrl(info.portrait);
+        });
         return infos;
     }
 
@@ -786,6 +814,8 @@ export class WfcManager {
         impl.getGroupInfoEx(groupId, refresh, info => {
             if (!info.portrait) {
                 info.portrait = this.defaultGroupPortrait(info);
+            } else {
+                info.portrait = this.redirectUrl(info.portrait);
             }
             successCB && successCB(info);
         }, failCB);
@@ -1342,7 +1372,10 @@ export class WfcManager {
      * @returns {Promise<void>}
      */
     async getChatroomInfo(chatroomId, updateDt, successCB, failCB) {
-        return impl.getChatroomInfo(chatroomId, updateDt, successCB, failCB);
+        return impl.getChatroomInfo(chatroomId, updateDt, chatRoomInfo => {
+            chatRoomInfo.portrait = this.redirectUrl(chatRoomInfo.portrait);
+            successCB && successCB(chatRoomInfo);
+        }, failCB);
     }
 
     /**
@@ -1377,7 +1410,9 @@ export class WfcManager {
      * @returns {ChannelInfo|NullChannelInfo}
      */
     getChannelInfo(channelId, refresh) {
-        return impl.getChannelInfo(channelId, refresh);
+        let channelInfo = impl.getChannelInfo(channelId, refresh);
+        channelInfo.portrait = this.redirectUrl(channelInfo.portrait);
+        return channelInfo;
     }
 
     /**
@@ -1401,7 +1436,12 @@ export class WfcManager {
      * @param {function (number)} failCB
      */
     searchChannel(keyword, fuzzy, successCB, failCB) {
-        impl.searchChannel(keyword, fuzzy, successCB, failCB);
+        impl.searchChannel(keyword, fuzzy, (keyword, channelInfos) => {
+            channelInfos && channelInfos.forEach(c => {
+                c.portrait = this.redirectUrl(c.portrait);
+            });
+            successCB && successCB(keyword, channelInfos);
+        }, failCB);
     }
 
     /**
@@ -2842,7 +2882,9 @@ export class WfcManager {
      * @return {DomainInfo}
      */
     getDomainInfo(domainId, refresh = false) {
-        return impl.getDomainInfo(domainId, refresh);
+        let domainInfo = impl.getDomainInfo(domainId, refresh);
+        domainInfo.portrait = this.redirectUrl(domainInfo.portrait);
+        return domainInfo;
     }
 
     /**
@@ -2851,7 +2893,12 @@ export class WfcManager {
      * @param {function (number)} failCB
      */
     loadRemoteDomains(successCB, failCB) {
-        impl.loadRemoteDomains(successCB, failCB);
+        impl.loadRemoteDomains(domainInfos => {
+            domainInfos && domainInfos.forEach(d => {
+                d.portrait = this.redirectUrl(d.portrait);
+            });
+            successCB && successCB(domainInfos);
+        }, failCB);
     }
 
     /**
@@ -2938,6 +2985,19 @@ export class WfcManager {
         return str.replace(/\+/g, '-')
             .replace(/\//g, '_')
             .replace(/=/g, '')
+    }
+
+    /**
+     * 双网环境下，把 SDK 返回的对象属性链接（头像等）转换为当前网络可访问的地址。
+     * 未连接备选网络或 Config.urlRedirect 未配置转换规则时，原样返回
+     * @param {string} url
+     * @returns {string}
+     */
+    redirectUrl(url) {
+        if (!url || !Config.urlRedirect) {
+            return url;
+        }
+        return Config.urlRedirect(url);
     }
 
     defaultUserPortrait(userInfo) {
