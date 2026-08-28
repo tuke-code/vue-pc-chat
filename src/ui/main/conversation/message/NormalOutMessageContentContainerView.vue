@@ -313,7 +313,8 @@ export default {
 
 .message-avatar-content-container {
     display: flex;
-    max-width: calc(100% - 60px);
+    /* 消息行宽度上限：随窗口流动（可用宽度的 75%），但不低于 400px；极窄窗口仍以可用宽度兜底 */
+    max-width: min(calc(100% - 60px), max(400px, 75%));
     overflow: hidden;
     /*max-height: 800px;*/
     margin-left: auto;
